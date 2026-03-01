@@ -1374,35 +1374,56 @@ function isVideoFile(file) {
 }
 
 /**
- * 递归获取所有视频文件
+ * 递归获取所有视频文件（带错误收集和性能监控）
  * @param {string} shareURL - 分享链接
  * @param {Array} files - 文件列表
- * @param {string} pdirFid - 父目录ID
+ * @param {Array} errors - 错误收集数组（可选）
  * @returns {Promise<Array>} 所有视频文件列表
  */
-async function getAllVideoFiles(shareURL, files, pdirFid) {
-  const videoFiles = [];
-
-  for (const file of files) {
-    if (file.file && isVideoFile(file)) {
-      // 是视频文件，直接添加
-      videoFiles.push(file);
-    } else if (file.dir) {
-      // 是目录，递归获取
-      try {
-        const subFileList = await OmniBox.getDriveFileList(shareURL, file.fid);
-        if (subFileList && subFileList.files && Array.isArray(subFileList.files)) {
-          const subVideoFiles = await getAllVideoFiles(shareURL, subFileList.files, file.fid);
-          videoFiles.push(...subVideoFiles);
-        }
-      } catch (error) {
-        OmniBox.log("warn", `获取子目录文件失败: ${error.message}`);
-        // 继续处理其他文件
-      }
-    }
+async function getAllVideoFiles(shareURL, files, errors = []) {
+  if (!files || !Array.isArray(files)) {
+    return [];
   }
 
-  return videoFiles;
+  const tasks = files.map(async (file) => {
+    if (file.file && isVideoFile(file)) {
+      return [file];
+    } else if (file.dir) {
+      const startTime = performance.now(); // 记录开始时间
+      
+      try {
+        const subFileList = await OmniBox.getDriveFileList(shareURL, file.fid);
+        const endTime = performance.now(); // 记录结束时间
+        const duration = (endTime - startTime).toFixed(2);
+        
+        // 记录成功的 API 调用耗时
+        OmniBox.log("info", `获取目录 [${file.name || file.fid}] 耗时: ${duration}ms`);
+        
+        if (subFileList?.files && Array.isArray(subFileList.files)) {
+          return await getAllVideoFiles(shareURL, subFileList.files, errors);
+        }
+        return [];
+      } catch (error) {
+        const endTime = performance.now();
+        const duration = (endTime - startTime).toFixed(2);
+        
+        const errorInfo = {
+          path: file.name || file.fid,
+          fid: file.fid,
+          message: error.message,
+          duration: `${duration}ms`, // 添加失败时的耗时
+          timestamp: new Date().toISOString()
+        };
+        errors.push(errorInfo);
+        OmniBox.log("warn", `获取子目录失败 [${file.name || file.fid}] 耗时: ${duration}ms, 错误: ${error.message}`);
+        return [];
+      }
+    }
+    return [];
+  });
+
+  const results = await Promise.all(tasks);
+  return results.flat();
 }
 
 /**
@@ -2093,6 +2114,8 @@ async function play(params) {
       OmniBox.log("warn", `弹幕匹配失败: ${error.message}`);
       // 弹幕匹配失败不影响播放，继续执行
     }
+
+    // OmniBox.log("info", `OMNIBOX_BASE_URL: ${process.env.OMNIBOX_BASE_URL}`)
 
     // 使用SDK获取播放信息（自动获取stoken和fid_token，flag参数用于处理URL前缀）
     // 对于夸克和UC网盘，如果flag是"服务端代理"或"本地代理"，后端会自动添加前缀
