@@ -2,16 +2,11 @@
 // @author 
 // @description 弹幕：支持
 // @dependencies: axios
-// @version 1.0.9
+// @version 1.1.0
 // @downloadURL https://gh-proxy.org/https://github.com/Silent1566/OmniBox-Spider/raw/refs/heads/main/综合/哔哩大全.js
 
 /**
- * 哔哩大全 - 适配OmniBox 2.0.3版本
-// @version 1.0.8
-// @downloadURL https://gh-proxy.org/https://github.com/Silent1566/OmniBox-Spider/raw/refs/heads/main/综合/哔哩大全.js
-
-/**
- * 哔哩大全 - 极简版（只有一个推荐页面）
+ * 哔哩大全 - OmniBox 爬虫脚本（模板化版本）
  */
 const axios = require("axios");
 const OmniBox = require("omnibox_sdk");
@@ -29,10 +24,50 @@ const BILI_HEADERS = {
 
 const isLoggedIn = () => Boolean(BILI_COOKIE && BILI_COOKIE.includes("SESSDATA="));
 
-// 分类配置 - 只有一个推荐分类
-// 只有一个分类：推荐
 const CLASSES = [
-  { type_id: "recommend", type_name: "🔥 热门推荐" },
+  { type_id: "沙雕仙逆", type_name: "傻屌仙逆" },
+  { type_id: "沙雕动画", type_name: "沙雕动画" },
+  { type_id: "纪录片超清", type_name: "纪录片" },
+  { type_id: "演唱会超清", type_name: "演唱会" },
+  { type_id: "音乐超清", type_name: "流行音乐" },
+  { type_id: "美食超清", type_name: "美食" },
+  { type_id: "食谱", type_name: "食谱" },
+  { type_id: "体育超清", type_name: "体育" },
+  { type_id: "球星", type_name: "球星" },
+  { type_id: "中小学教育", type_name: "教育" },
+  { type_id: "幼儿教育", type_name: "幼儿教育" },
+  { type_id: "旅游", type_name: "旅游" },
+  { type_id: "风景4K", type_name: "风景" },
+  { type_id: "说案", type_name: "说案" },
+  { type_id: "知名UP主", type_name: "知名UP主" },
+  { type_id: "探索发现超清", type_name: "探索发现" },
+  { type_id: "鬼畜", type_name: "鬼畜" },
+  { type_id: "搞笑超清", type_name: "搞笑" },
+  { type_id: "儿童超清", type_name: "儿童" },
+  { type_id: "动物世界超清", type_name: "动物世界" },
+  { type_id: "相声小品超清", type_name: "相声小品" },
+  { type_id: "戏曲", type_name: "戏曲" },
+  { type_id: "解说", type_name: "解说" },
+  { type_id: "演讲", type_name: "演讲" },
+  { type_id: "小姐姐超清", type_name: "小姐姐" },
+  { type_id: "荒野求生超清", type_name: "荒野求生" },
+  { type_id: "健身", type_name: "健身" },
+  { type_id: "帕梅拉", type_name: "帕梅拉" },
+  { type_id: "太极拳", type_name: "太极拳" },
+  { type_id: "广场舞", type_name: "广场舞" },
+  { type_id: "舞蹈", type_name: "舞蹈" },
+  { type_id: "音乐", type_name: "音乐" },
+  { type_id: "歌曲", type_name: "歌曲" },
+  { type_id: "MV4K", type_name: "MV" },
+  { type_id: "舞曲超清", type_name: "舞曲" },
+  { type_id: "4K", type_name: "4K" },
+  { type_id: "电影", type_name: "电影" },
+  { type_id: "电视剧", type_name: "电视剧" },
+  { type_id: "白噪音超清", type_name: "白噪音" },
+  { type_id: "考公考证", type_name: "考公考证" },
+  { type_id: "平面设计教学", type_name: "平面设计教学" },
+  { type_id: "软件教程", type_name: "软件教程" },
+  { type_id: "Windows", type_name: "Windows" },
 ];
 
 const QUALITY_NAME_MAP = {
@@ -57,69 +92,10 @@ function logError(msg, err) {
   OmniBox.log("error", `[BILI-ALL] ${msg}: ${err?.message || err}`);
 }
 
-/**
- * 下载图片并转换为Base64
- */
-async function downloadImageAsBase64(url) {
-  if (!url) return '';
-  
-  try {
-    logInfo(`downloadImageAsBase64: 下载图片 ${url}`);
-    
-    const response = await axios.get(url, {
-      headers: {
-        'User-Agent': BILI_HEADERS['User-Agent'],
-        'Referer': 'https://www.bilibili.com',
-        'Accept': 'image/webp,image/apng,image/*,*/*;q=0.8',
-        'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
-        'Connection': 'keep-alive',
-      },
-      responseType: 'arraybuffer',
-      timeout: 10000
-    });
-    
-    if (response.status === 200 && response.data) {
-      const contentType = response.headers['content-type'] || 'image/jpeg';
-      const base64 = Buffer.from(response.data, 'binary').toString('base64');
-      const dataUrl = `data:${contentType};base64,${base64}`;
-      logInfo(`downloadImageAsBase64: 成功转换为Base64，大小: ${base64.length} 字符`);
-      return dataUrl;
-    }
-  } catch (error) {
-    logInfo(`downloadImageAsBase64: 下载失败 ${error.message}`);
-  }
-  
-  return '';
-}
-
-/**
- * 获取B站视频封面
- */
-async function getCoverBase64(aid) {
-  if (!aid) return '';
-  
-  try {
-    logInfo(`getCoverBase64: 获取aid=${aid}的封面`);
-    
-    const { data } = await axios.get(`https://api.bilibili.com/x/web-interface/view?aid=${aid}`, {
-      headers: BILI_HEADERS,
-      timeout: 5000
-    });
-    
-    if (data?.code === 0 && data?.data?.pic) {
-      const picUrl = data.data.pic;
-      logInfo(`getCoverBase64: 获取到封面URL: ${picUrl}`);
-      
-      const base64 = await downloadImageAsBase64(picUrl);
-      if (base64) {
-        return base64;
-      }
-    }
-  } catch (error) {
-    logInfo(`getCoverBase64: 请求失败: ${error.message}`);
-  }
-  
-  return '';
+function fixCover(url) {
+  if (!url) return "";
+  if (url.startsWith("//")) return `https:${url}`;
+  return url;
 }
 
 function formatDuration(seconds) {
@@ -128,6 +104,12 @@ function formatDuration(seconds) {
   const minutes = Math.floor(sec / 60);
   const secs = sec % 60;
   return `${String(minutes).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+}
+
+function formatSearchDuration(duration) {
+  if (!duration || typeof duration !== "string") return "00:00";
+  const parts = duration.split(":");
+  return parts.length === 2 ? duration : "00:00";
 }
 
 function preprocessTitle(title) {
@@ -211,10 +193,12 @@ function inferFileNameFromURL(url) {
 }
 
 async function matchDanmu(fileName, cid) {
+  // 优先沿用原有 B 站弹幕逻辑
   if (cid) {
     return [{ name: "B站弹幕", url: `https://api.bilibili.com/x/v1/dm/list.so?oid=${cid}` }];
   }
 
+  // 可选：如果配置 DANMU_API，兼容 4KVM 风格匹配
   if (!DANMU_API || !fileName) return [];
 
   try {
@@ -250,250 +234,84 @@ async function matchDanmu(fileName, cid) {
   }
 }
 
-/**
- * 获取视频列表（支持分页）
- */
-async function getVideoList(page = 1, keyword = '') {
-  try {
-    let url;
-    let items = [];
-    
-    if (keyword) {
-      // 搜索模式
-      logInfo(`搜索关键词: ${keyword}, 页码: ${page}`);
-      const { data } = await axios.get("https://api.bilibili.com/x/web-interface/search/type", {
-        headers: BILI_HEADERS,
-        params: {
-          search_type: "video",
-          keyword,
-          page: page,
-          pagesize: 20
-        },
-        timeout: 5000
-      });
-      items = (data?.data?.result || []).filter((item) => item.type === "video");
-    } else {
-      // 热门推荐模式
-      logInfo(`获取热门推荐, 页码: ${page}`);
-      const url = `https://api.bilibili.com/x/web-interface/popular?ps=20&pn=${page}`;
-      const { data } = await axios.get(url, { headers: BILI_HEADERS, timeout: 5000 });
-      items = data?.data?.list || [];
-    }
-    
-    // 并行处理封面
-    const promises = items.map(async (item) => {
-      const cover = await getCoverBase64(item.aid);
- * 首页 - 热门推荐
- */
 async function home(params) {
   try {
-    logInfo("开始获取首页推荐数据...");
-    
-    // 获取热门视频列表，每页20个
-    const pg = params.page || 1;
-    const url = `https://api.bilibili.com/x/web-interface/popular?ps=20&pn=${pg}`;
-    const { data } = await axios.get(url, { headers: BILI_HEADERS, timeout: 5000 });
+    const url = "https://api.bilibili.com/x/web-interface/popular?ps=20&pn=1";
+    const { data } = await axios.get(url, { headers: BILI_HEADERS });
 
-    logInfo(`首页API返回: code=${data?.code}`);
-    
-    const items = data?.data?.list || [];
-    
-    // 并行处理所有封面，提高速度
-    const promises = items.map(async (item) => {
-      logInfo(`处理视频 ${item.aid} 的封面...`);
-      const cover = await getCoverBase64(item.aid);
-      
-      return {
-        vod_id: String(item.aid || ""),
-        vod_name: String(item.title || "").replace(/<[^>]*>/g, ""),
-        vod_pic: cover || '',
-        vod_remarks: item.duration ? formatDuration(item.duration) : (item.duration || ''),
-      };
-    });
-    
-    return await Promise.all(promises);
-  } catch (error) {
-    logError("获取视频列表失败", error);
-    return [];
-  }
-}
+    const list = (data?.data?.list || []).map((item) => ({
+      vod_id: String(item.aid || ""),
+      vod_name: String(item.title || "").replace(/<[^>]*>/g, ""),
+      vod_pic: fixCover(item.pic),
+      vod_remarks: formatDuration(item.duration),
+    }));
 
-/**
- * 首页 - 返回分类和第一页数据
- */
-async function home(params) {
-  try {
-    logInfo("获取首页数据...");
-    
-    // 获取第一页数据
-    const list = await getVideoList(1);
-    
-    logInfo(`首页返回 ${list.length} 个视频`);
-        vod_remarks: formatDuration(item.duration),
-      };
-    });
-    
-    const list = await Promise.all(promises);
-
-    logInfo(`首页处理完成，共 ${list.length} 个视频`);
-    
     return {
       class: CLASSES,
-      list: list,
-      // 添加分页信息
-      page: 1,
-      pagecount: 100, // 假设有100页
-      total: list.length
+      list,
     };
   } catch (error) {
     logError("首页获取失败", error);
-    return { 
-      class: CLASSES, 
-      list: [],
-      page: 1,
-      pagecount: 0,
-      total: 0
-    };
+    return { class: CLASSES, list: [] };
   }
 }
 
-/**
- * 分类 - 支持分页加载
- */
 async function category(params) {
-  const categoryId = params.categoryId || "recommend";
-  const pg = parseInt(params.page) || 1;
-  
+  const keyword = params.categoryId || "";
+  const page = Math.max(1, parseInt(params.page, 10) || 1);
+  if (!keyword) {
+    return { page: 1, pagecount: 0, total: 0, list: [] };
+  }
+
   try {
-    logInfo(`获取分类数据: ${categoryId}, 页码: ${pg}`);
-    
-    // 获取指定页的数据
-    const list = await getVideoList(pg);
-    
-    logInfo(`分类返回 ${list.length} 个视频`);
-    
+    const { data } = await axios.get("https://api.bilibili.com/x/web-interface/search/type", {
+      headers: BILI_HEADERS,
+      params: {
+        search_type: "video",
+        keyword,
+        page,
+      },
+    });
+
+    const list = (data?.data?.result || [])
+      .filter((item) => item.type === "video")
+      .map((item) => ({
+        vod_id: String(item.aid || ""),
+        vod_name: String(item.title || "").replace(/<[^>]*>/g, ""),
+        vod_pic: fixCover(item.pic),
+        vod_remarks: formatSearchDuration(item.duration),
+      }));
+
     return {
-      list: list,
-      page: pg,
-      pagecount: 100, // 假设有100页
-      total: list.length * 100 // 估算总数
+      page,
+      pagecount: data?.data?.numPages || 1,
+      total: data?.data?.numResults || list.length,
+      list,
     };
   } catch (error) {
     logError("分类获取失败", error);
-    return { 
-      list: [], 
-      page: pg, 
-      pagecount: 0, 
-      total: 0 
-    };
- * 分类 - 统一返回推荐页的内容
- */
-async function category(params) {
-  // 不管传什么分类ID，都返回推荐内容
-  return home(params);
-}
-
-/**
- * 搜索 - 返回推荐内容（或者可以改为B站搜索）
- */
-async function search(params) {
-  const keyword = params.keyword || params.wd || "";
-  
-  // 如果有搜索关键词，返回搜索结果
-  if (keyword) {
-    try {
-      logInfo(`开始搜索: ${keyword}, 页码: ${params.page || 1}`);
-      
-      const pg = params.page || 1;
-      const { data } = await axios.get("https://api.bilibili.com/x/web-interface/search/type", {
-        headers: BILI_HEADERS,
-        params: {
-          search_type: "video",
-          keyword,
-          page: pg,
-        },
-        timeout: 5000
-      });
-
-      const items = (data?.data?.result || []).filter((item) => item.type === "video");
-      
-      const promises = items.map(async (item) => {
-        const cover = await getCoverBase64(item.aid);
-        return {
-          vod_id: String(item.aid || ""),
-          vod_name: String(item.title || "").replace(/<[^>]*>/g, ""),
-          vod_pic: cover || '',
-          vod_remarks: item.duration || '',
-        };
-      });
-      
-      const list = await Promise.all(promises);
-
-      return {
-        page: parseInt(pg),
-        pagecount: data?.data?.numPages || 1,
-        total: data?.data?.numResults || list.length,
-        list,
-      };
-    } catch (error) {
-      logError("搜索失败", error);
-    }
-  }
-  
-  // 没有关键词就返回推荐
-  return home(params);
-}
-
-/**
- * 搜索
- */
-async function search(params) {
-  const wd = params.keyword || params.wd || "";
-  const pg = parseInt(params.page) || 1;
-  
-  try {
-    logInfo(`搜索: ${wd}, 页码: ${pg}`);
-    
-    const list = await getVideoList(pg, wd);
-    
-    return {
-      list: list,
-      page: pg,
-      pagecount: 100,
-      total: list.length * 100
-    };
-  } catch (error) {
-    logError("搜索失败", error);
-    return { 
-      list: [], 
-      page: pg, 
-      pagecount: 0, 
-      total: 0 
-    };
+    return { page, pagecount: 0, total: 0, list: [] };
   }
 }
 
-/**
- * 详情
- */
+async function search(params) {
+  return category({
+    categoryId: params.keyword || params.wd || "",
+    page: params.page,
+  });
+}
+
 async function detail(params) {
   const videoId = params.videoId;
   if (!videoId) return { list: [] };
 
   try {
-    logInfo(`获取详情: videoId=${videoId}`);
-    
     const { data } = await axios.get(`https://api.bilibili.com/x/web-interface/view?aid=${videoId}`, {
       headers: BILI_HEADERS,
-      timeout: 5000
     });
 
-    logInfo(`详情API返回: code=${data?.code}`);
-    
     const video = data?.data;
     if (!video) return { list: [] };
-
-    const cover = await getCoverBase64(videoId);
 
     const episodes = (video.pages || []).map((p, i) => {
       const part = p.part || `第${i + 1}集`;
@@ -508,7 +326,7 @@ async function detail(params) {
         {
           vod_id: String(videoId),
           vod_name: String(video.title || "").replace(/<[^>]*>/g, ""),
-          vod_pic: cover || '',
+          vod_pic: fixCover(video.pic),
           vod_content: String(video.desc || ""),
           vod_play_sources: [
             {
@@ -525,9 +343,6 @@ async function detail(params) {
   }
 }
 
-/**
- * 播放
- */
 async function play(params) {
   let playId = params.playId || "";
   const flag = params.flag || "";
@@ -586,7 +401,6 @@ async function play(params) {
           fourk: qn >= 120 ? 1 : 0,
           ...(!loggedIn ? { try_look: 1 } : {}),
         },
-        timeout: 5000
       });
 
       if (data?.code !== 0 || !data?.data) continue;
@@ -653,10 +467,12 @@ async function play(params) {
     flag,
   };
 
+  // 兼容保留：如果是 DASH，带上最佳音轨供支持方使用
   if (availableQualities[0]?.audioUrl) {
     response.extra = { audio: availableQualities[0].audioUrl };
   }
 
+  // 弹幕：优先 B 站原有逻辑；无 cid 时回退 4KVM 风格匹配
   let fileName = buildFileNameForDanmu(vodName || params.vodName || "", episodeName || params.episodeName || "");
   if (!fileName && urls[0]?.url) {
     fileName = inferFileNameFromURL(urls[0].url);
