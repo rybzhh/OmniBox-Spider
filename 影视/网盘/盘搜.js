@@ -978,12 +978,12 @@ async function detail(params) {
 
     OmniBox.log("info", `解析参数: shareURL=${shareURL}, keyword=${keyword}, note=${note}`);
 
-    // 检测网盘类型
-    const driveInfo = await OmniBox.getDriveInfoByShareURL(shareURL);
+    // 并行获取网盘信息与根目录文件列表
+    const [driveInfo, fileList] = await Promise.all([
+      OmniBox.getDriveInfoByShareURL(shareURL),
+      OmniBox.getDriveFileList(shareURL, "0"),
+    ]);
     const displayName = driveInfo.displayName;
-
-    // 获取文件列表（自动获取stoken）
-    const fileList = await OmniBox.getDriveFileList(shareURL, "0");
 
     if (!fileList || !fileList.files || !Array.isArray(fileList.files)) {
       throw new Error("获取文件列表失败");
@@ -1035,15 +1035,27 @@ async function detail(params) {
     // 获取刮削后的元数据（使用通用API）
     let scrapeData = null;
     let videoMappings = [];
-    try {
-      OmniBox.log("info", `开始获取元数据，shareURL: ${shareURL}`);
-      // 使用新的通用元数据API，videoId作为resourceId
-      const metadata = await OmniBox.getDriveMetadata(shareURL);
-      OmniBox.log("info", `获取元数据响应: ${JSON.stringify(metadata).substring(0, 500)}`);
+    const metadataPromise = (async () => {
+      try {
+        OmniBox.log("info", `开始获取元数据，shareURL: ${shareURL}`);
+        // 使用新的通用元数据API，videoId作为resourceId
+        const metadata = await OmniBox.getDriveMetadata(shareURL);
+        OmniBox.log("info", `获取元数据响应: ${JSON.stringify(metadata).substring(0, 500)}`);
+        return metadata;
+      } catch (error) {
+        OmniBox.log("error", `获取元数据失败: ${error.message}`);
+        if (error.stack) {
+          OmniBox.log("error", `获取元数据错误堆栈: ${error.stack}`);
+        }
+        return null;
+      }
+    })();
 
+    const metadata = await metadataPromise;
+    if (metadata) {
       scrapeData = metadata.scrapeData || null;
       videoMappings = metadata.videoMappings || [];
-      const scrapeType = metadata.scrapeType || ""; // 获取刮削类型（movie 或 tv）
+      const scrapeType = metadata.scrapeType || "";
 
       if (scrapeData) {
         OmniBox.log("info", `获取到刮削数据，标题: ${scrapeData.title || "未知"}, 类型: ${scrapeType || "未知"}, 映射数量: ${videoMappings.length}`);
@@ -1052,11 +1064,6 @@ async function detail(params) {
         if (!scrapingSuccess) {
           OmniBox.log("warn", "刮削处理可能失败，导致没有刮削数据");
         }
-      }
-    } catch (error) {
-      OmniBox.log("error", `获取元数据失败: ${error.message}`);
-      if (error.stack) {
-        OmniBox.log("error", `获取元数据错误堆栈: ${error.stack}`);
       }
     }
 
@@ -1473,44 +1480,47 @@ async function play(params, context) {
       }
     }
 
-    const playInfo = await OmniBox.getDriveVideoPlayInfo(shareURL, fileId, routeType);
-
+    // 并行: 主链路(播放地址) + 辅链路(观看记录参数整理，不阻塞主链)
+    const playInfoPromise = OmniBox.getDriveVideoPlayInfo(shareURL, fileId, routeType);
     OmniBox.log("info", `使用线路: ${routeType}`);
+
+    const historyPayload = (() => {
+      try {
+        const sourceId = context.sourceId;
+        if (!sourceId) return null;
+        return {
+          vodId: params.vodId || shareURL,
+          title: params.title || scrapeTitle || shareURL,
+          pic: params.pic || scrapePic || "",
+          episode: playId,
+          sourceId,
+          episodeNumber,
+          episodeName,
+        };
+      } catch (error) {
+        OmniBox.log("warn", `整理观看记录参数失败: ${error.message}`);
+        return null;
+      }
+    })();
+
+    const playInfo = await playInfoPromise;
 
     if (!playInfo || !playInfo.url || !Array.isArray(playInfo.url) || playInfo.url.length === 0) {
       throw new Error("无法获取播放地址");
     }
 
-    // 添加观看记录（如果不存在）
-    try {
-      const sourceId = context.sourceId;
-      if (sourceId) {
-        // 构建vodId：使用shareURL作为视频唯一标识
-        const vodId = params.vodId || shareURL;
-        // 优先使用params中的标题，其次使用刮削的标题，最后使用shareURL
-        const title = params.title || scrapeTitle || shareURL;
-        // 优先使用params中的封面图，其次使用刮削的封面图
-        const pic = params.pic || scrapePic || "";
-
-        const added = await OmniBox.addPlayHistory({
-          vodId: vodId,
-          title: title,
-          pic: pic,
-          episode: playId, // 使用playId作为剧集标识
-          sourceId: sourceId,
-          episodeNumber: episodeNumber,
-          episodeName: episodeName,
+    if (historyPayload) {
+      OmniBox.addPlayHistory(historyPayload)
+        .then((added) => {
+          if (added) {
+            OmniBox.log("info", `已添加观看记录: ${historyPayload.title}`);
+          } else {
+            OmniBox.log("info", `观看记录已存在，跳过添加: ${historyPayload.title}`);
+          }
+        })
+        .catch((error) => {
+          OmniBox.log("warn", `添加观看记录失败: ${error.message}`);
         });
-
-        if (added) {
-          OmniBox.log("info", `已添加观看记录: ${title}`);
-        } else {
-          OmniBox.log("info", `观看记录已存在，跳过添加: ${title}`);
-        }
-      }
-    } catch (error) {
-      OmniBox.log("warn", `添加观看记录失败: ${error.message}`);
-      // 添加观看记录失败不影响播放，继续执行
     }
 
     // 使用后端返回的url数组（格式：[{name: "RAW", url: "..."}, ...]）
